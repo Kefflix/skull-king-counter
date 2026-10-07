@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <!-- Sorgt für perfektes App-Feeling auf dem Handy -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1e293b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  
+  <title>Skull King Counter</title>
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      /* Verhindert das nervige Neuladen, wenn man auf dem Handy nach unten zieht */
+      overscroll-behavior-y: contain; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    /* Deaktiviert Textmarkierung für App-Feeling */
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    input {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+  </style>
+
+  <!-- React & Babel via CDN laden -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Hier startet die App Logic -->
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const PLAYER_COLORS = [
+      '#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'
+    ];
+
+    function App() {
+      const [phase, setPhase] = useState('setup');
+      const [players, setPlayers] = useState([]);
+      const [playerNameInput, setPlayerNameInput] = useState('');
+      const [includeOma, setIncludeOma] = useState(false);
+      
+      const [currentRound, setCurrentRound] = useState(1);
+      const [history, setHistory] = useState({});
+      const [showChartInGame, setShowChartInGame] = useState(false);
+      
+      const [tempBids, setTempBids] = useState({});
+      const [tempReceived, setTempReceived] = useState({});
+      const [tempBonus, setTempBonus] = useState({});
+      const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+      const [isLoaded, setIsLoaded] = useState(false);
+
+      useEffect(() => {
+        const saved = localStorage.getItem('skullKingState');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            setPhase(parsed.phase || 'setup');
+            setPlayers(parsed.players || []);
+            setCurrentRound(parsed.currentRound || 1);
+            setHistory(parsed.history || {});
+            setTempBids(parsed.tempBids || {});
+            setTempReceived(parsed.tempReceived || {});
+            setTempBonus(parsed.tempBonus || {});
+            setIncludeOma(parsed.includeOma || false);
+          } catch (e) {
+            console.error("Fehler beim Laden", e);
+          }
+        }
+        setIsLoaded(true);
+      }, []);
+
+      useEffect(() => {
+        if (isLoaded) {
+          const stateToSave = { phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma };
+          localStorage.setItem('skullKingState', JSON.stringify(stateToSave));
+        }
+      }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma, isLoaded]);
+
+      const handleAddPlayer = () => {
+        if (playerNameInput.trim()) {
+          setPlayers([...players, { id: Date.now().toString(), name: playerNameInput.trim(), isOma: false }]);
+          setPlayerNameInput('');
+        }
+      };
+
+      const handleRemovePlayer = (id) => setPlayers(players.filter(p => p.id !== id));
+
+      const handleConfirmPlayers = () => {
+        let finalPlayers = [...players];
+        if (includeOma) finalPlayers.push({ id: 'oma-' + Date.now(), name: '👵 Oma', isOma: true });
+        if (finalPlayers.length >= 2) {
+          setPlayers(finalPlayers);
+          initBids(finalPlayers, 1);
+          setCurrentRound(1);
+          setHistory({});
+          setPhase('bids');
+        } else alert("Bitte mindestens 2 Spieler (oder 1 + Oma) hinzufügen.");
+      };
+
+      const getStartingPlayerIndex = (round, count = players.length) => count > 0 ? (round - 1) % count : 0;
+      const getDealerPlayerIndex = (round, count = players.length) => count > 0 ? (round - 2 + count) % count : 0;
+
+      const initBids = (currentPlayers = players, round = currentRound) => {
+        const initialBids = {};
+        const pCount = currentPlayers.length;
+        currentPlayers.forEach((p, index) => {
+          if (p.isOma) {
+            const expectedTricks = round / pCount;
+            const isStarter = index === getStartingPlayerIndex(round, pCount);
+            initialBids[p.id] = isStarter ? Math.ceil(expectedTricks) : Math.floor(expectedTricks);
+          } else {
+            initialBids[p.id] = 0;
+          }
+        });
+        setTempBids(initialBids);
+      };
+
+      const initReceived = () => {
+        const initialRec = {}, initialBonus = {};
+        players.forEach(p => { initialRec[p.id] = 0; initialBonus[p.id] = 0; });
+        setTempReceived(initialRec);
+        setTempBonus(initialBonus);
+      };
+
+      const updateTemp = (setter, id, delta, min = 0, max = currentRound) => {
+        setter(prev => {
+          let val = (prev[id] || 0) + delta;
+          if (val < min) val = min;
+          if (val > max) val = max;
+          return { ...prev, [id]: val };
+        });
+      };
+
+      const cycleBonus = (pId) => {
+        const options = [0, 30, 50];
+        for (let i = 3; i <= players.length; i++) options.push((i - 1) * 30);
+        const currentVal = tempBonus[pId] || 0;
+        let currentIndex = options.indexOf(currentVal);
+        const nextIndex = (currentIndex + 1) % options.length;
+        setTempBonus(prev => ({ ...prev, [pId]: options[nextIndex] }));
+      };
+
+      const calculateScore = (bid, received, bonus, round) => {
+        if (bid === 0) return received === 0 ? (round * 10) + bonus : -(round * 10);
+        return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
+      };
+
+      const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
+      const isValidStichCount = totalReceivedStiche === currentRound;
+
+      const handleConfirmReceived = () => {
+        if (!isValidStichCount) return;
+        const roundData = {};
+        players.forEach(p => {
+          const score = calculateScore(tempBids[p.id], tempReceived[p.id], tempBonus[p.id], currentRound);
+          const prevTotal = currentRound === 1 ? 0 : history[currentRound - 1][p.id].total;
+          roundData[p.id] = { bid: tempBids[p.id], received: tempReceived[p.id], bonus: tempBonus[p.id], score, total: prevTotal + score };
+        });
+        setHistory(prev => ({ ...prev, [currentRound]: roundData }));
+        if (currentRound < 10) {
+          const next = currentRound + 1;
+          setCurrentRound(next);
+          initBids(players, next);
+          setPhase('bids');
+        } else setPhase('finished');
+      };
+
+      const getLeaderIds = () => {
+        if (currentRound === 1 && !history[1]) return [];
+        const lastRound = phase === 'finished' ? 10 : currentRound - 1;
+        if (lastRound < 1 || !history[lastRound]) return [];
+        let max = -Infinity, leaders = [];
+        players.forEach(p => {
+          const tot = history[lastRound][p.id]?.total ?? 0;
+          if (tot > max) { max = tot; leaders = [p.id]; }
+          else if (tot === max) leaders.push(p.id);
+        });
+        return leaders;
+      };
+
+      const ScoreChart = () => {
+        const maxRoundsCompleted = Object.keys(history).length;
+        if (maxRoundsCompleted === 0) return null;
+        const width = 340, height = 180, pad = { t: 20, r: 15, b: 25, l: 35 };
+        let minScore = 0, maxScore = 50;
+        players.forEach(p => {
+          for (let r = 1; r <= maxRoundsCompleted; r++) {
+            if (history[r]) {
+              const t = history[r][p.id].total;
+              if (t < minScore) minScore = t;
+              if (t > maxScore) maxScore = t;
+            }
+          }
+        });
+        const range = (maxScore - minScore) || 1;
+        const getX = (r) => pad.l + (r / 10) * (width - pad.l - pad.r);
+        const getY = (s) => height - pad.b - ((s - minScore) / range) * (height - pad.t - pad.b);
+
+        return (
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '12px', marginTop: '12px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#38bdf8', textAlign: 'center' }}>📈 Spielverlauf</div>
+            <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+              {minScore <= 0 && maxScore >= 0 && <line x1={pad.l} y1={getY(0)} x2={width - pad.r} y2={getY(0)} stroke="#475569" strokeDasharray="3 3" />}
+              {[0, 2, 4, 6, 8, 10].map(r => (
+                <g key={r}>
+                  <line x1={getX(r)} y1={pad.t} x2={getX(r)} y2={height - pad.b} stroke="#334155" strokeWidth="0.5" />
+                  <text x={getX(r)} y={height - 8} fill="#64748b" fontSize="9" textAnchor="middle">R{r}</text>
+                </g>
+              ))}
+              <text x={pad.l - 5} y={getY(maxScore) + 3} fill="#64748b" fontSize="8" textAnchor="end">{maxScore}</text>
+              <text x={pad.l - 5} y={getY(minScore)} fill="#64748b" fontSize="8" textAnchor="end">{minScore}</text>
+              {players.map((p, idx) => {
+                const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+                const pts = [{ x: getX(0), y: getY(0) }];
+                for (let r = 1; r <= maxRoundsCompleted; r++) if (history[r]) pts.push({ x: getX(r), y: getY(history[r][p.id].total) });
+                const path = pts.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
+                return (
+                  <g key={p.id}>
+                    <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {pts.map((pt, i) => <circle key={i} cx={pt.x} cy={pt.y} r="3" fill={color} stroke="#0f172a" strokeWidth="1" />)}
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+        );
+      };
+
+      const btnPrimary = (dis) => ({
+        width: '100%', padding: '14px', backgroundColor: dis ? '#475569' : '#2563eb', color: dis ? '#94a3b8' : '#fff',
+        border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', marginTop: '6px', cursor: dis ? 'not-allowed' : 'pointer'
+      });
+
+      if (!isLoaded) return <div style={{ color: '#fff', textAlign: 'center', marginTop: '50px' }}>Lade...</div>;
+
+      const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
+      const leaderIds = getLeaderIds();
+
+      return (
+        <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff' }}>
+          {phase === 'setup' && (
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%' }}>
+              <h2 style={{ textAlign: 'center', margin: 0 }}>☠️ Skull King</h2>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input type="text" placeholder="Name..." value={playerNameInput} onChange={e => setPlayerNameInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddPlayer()}
+                  style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: '#1e293b', color: '#fff', border: 'none', outline: 'none' }} />
+                <button onClick={handleAddPlayer} style={{ padding: '14px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '18px', fontWeight: 'bold' }}>+</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {players.map((p, i) => (
+                  <div key={p.id} style={{ padding: '12px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{i + 1}. <strong>{p.name}</strong></span>
+                    <button onClick={() => handleRemovePlayer(p.id)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '20px' }}>×</button>
+                  </div>
+                ))}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI) mitspielen lassen
+              </label>
+              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length + (includeOma ? 1 : 0)} Spieler)</button>
+            </div>
+          )}
+
+          {phase !== 'setup' && (
+            <>
+              <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+                <span style={{ fontWeight: 'bold' }}>{phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}</span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>📈</button>}
+                  <button onClick={() => { if(confirm('Reset?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>🗑️</button>
+                </div>
+              </div>
+
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', tableLayout: 'fixed' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '8px 2px', background: '#1e293b', width: '32px' }}>Rd</th>
+                      {players.map((p, i) => (
+                        <th key={p.id} style={{ background: leaderIds.includes(p.id) ? '#312e81' : '#1e293b', padding: '8px 2px', borderBottom: '1px solid #475569' }}>
+                          <div style={{ fontSize: '14px', color: leaderIds.includes(p.id) ? '#fbbf24' : '#38bdf8', overflow: 'hidden' }}>{leaderIds.includes(p.id) ? '👑 ' : ''}{p.name}</div>
+                          <div style={{ fontSize: '10px', color: '#4ade80' }}>{i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
+                      <tr key={r} style={{ background: r === currentRound && phase !== 'finished' ? '#1e293b' : 'transparent' }}>
+                        <td style={{ borderBottom: '1px solid #334155', padding: '8px 0', color: r === currentRound ? '#38bdf8' : '#64748b', fontWeight: 'bold' }}>{r}</td>
+                        {players.map(p => {
+                          const d = history[r]?.[p.id];
+                          return (
+                            <td key={p.id} style={{ borderBottom: '1px solid #334155', padding: '8px 0' }}>
+                              {d ? (
+                                <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+                                  <strong>{d.total}</strong>
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{d.bid}</span>
+                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{d.received}</span>
+                                </div>
+                              ) : <span style={{ color: '#334155' }}>-</span>}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {(showChartInGame || phase === 'finished') && <ScoreChart />}
+              </div>
+
+              {phase !== 'finished' && (
+                <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
+                  <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px' }}>
+                    {phase === 'bids' ? '🔮 Ansagen' : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
+                  </div>
+                  {players.map((p, i) => {
+                    const val = phase === 'bids' ? tempBids[p.id] : tempReceived[p.id];
+                    const setter = phase === 'bids' ? setTempBids : setTempReceived;
+                    const isStarter = i === getStartingPlayerIndex(currentRound);
+                    return (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
+                        <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80'}}><br/>🎯 Start</span>}</span>
+                        {phase === 'bids' && p.isOma ? (
+                          <div style={{ color: '#4ade80', fontWeight: 'bold' }}>Auto: {val}</div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
+                            <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
+                            <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
+                            {phase === 'received' && (
+                              <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold' }}>
+                                +{tempBonus[p.id] || 0}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button onClick={phase === 'bids' ? () => setShowConfirmModal(true) : handleConfirmReceived} disabled={phase === 'received' && !isValidStichCount} style={btnPrimary(phase === 'received' && !isValidStichCount)}>
+                    {phase === 'bids' ? 'Bestätigen' : (isValidStichCount ? 'Runde abschließen' : 'Stiche stimmen nicht')}
+                  </button>
+                </div>
+              )}
+
+              {phase === 'finished' && (
+                <div style={{ padding: '16px', backgroundColor: '#1e293b' }}>
+                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Nochmal (Gleiche Spieler)</button>
+                </div>
+              )}
+
+              {showConfirmModal && (
+                <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+                  <div style={{ background: '#1e293b', padding: '24px', borderRadius: '16px', width: '90%', maxWidth: '350px' }}>
+                    <h3 style={{ textAlign: 'center', margin: '0 0 16px' }}>Korrekt angesagt?</h3>
+                    {players.map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #334155' }}>
+                        <span>{p.name}</span>
+                        <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8' }}>{tempBids[p.id]} {tempBids[p.id] === 0 ? '(Null)' : ''}</strong>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', paddingTop: '16px' }}>
+                      <strong>Summe:</strong>
+                      <strong style={{ color: totalBids > currentRound ? '#ef4444' : totalBids < currentRound ? '#eab308' : '#10b981' }}>{totalBids}</strong>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                      <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Zurück</button>
+                      <button onClick={() => { setShowConfirmModal(false); initReceived(); setPhase('received'); }} style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>✅ Stimmt so!</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
