@@ -16,11 +16,9 @@
       margin: 0;
       padding: 0;
       background-color: #0f172a;
-      /* Verhindert das nervige Neuladen, wenn man auf dem Handy nach unten zieht */
       overscroll-behavior-y: contain; 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    /* Deaktiviert Textmarkierung für App-Feeling */
     * {
       user-select: none;
       -webkit-user-select: none;
@@ -30,7 +28,6 @@
       -webkit-user-select: auto;
     }
     
-    /* Animation für die Strategie-Einblendung (Toast) */
     @keyframes toastFade {
       0% { opacity: 0; transform: translate(-50%, -30%); }
       10% { opacity: 1; transform: translate(-50%, -50%); }
@@ -47,7 +44,6 @@
 <body>
   <div id="root"></div>
 
-  <!-- Hier startet die App Logic -->
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
@@ -74,6 +70,10 @@
       const toastTimer = useRef(null);
 
       const [isLoaded, setIsLoaded] = useState(false);
+      
+      // === NEU: KI PIRATEN STATES & REFS ===
+      const [apiKey, setApiKey] = useState('');
+      const pirateTimerRef = useRef(null);
 
       useEffect(() => {
         const saved = localStorage.getItem('skullKingState');
@@ -92,6 +92,11 @@
             console.error("Fehler beim Laden", e);
           }
         }
+        
+        // Lade API Key, falls vorhanden
+        const savedKey = localStorage.getItem('geminiApiKey');
+        if (savedKey) setApiKey(savedKey);
+        
         setIsLoaded(true);
       }, []);
 
@@ -101,6 +106,89 @@
           localStorage.setItem('skullKingState', JSON.stringify(stateToSave));
         }
       }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma, isLoaded]);
+
+      const saveApiKey = (val) => {
+        setApiKey(val);
+        localStorage.setItem('geminiApiKey', val);
+      };
+
+      // ==========================================
+      // ☠️ KI PIRATEN LOGIK (Sprache & API)
+      // ==========================================
+      
+      const speakPirate = (text) => {
+        // Stoppe aktuelles Sprechen, falls er schon brabbelt
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.lang = 'de-DE';
+        msg.pitch = 0.4; // Schön tiefe Stimme
+        msg.rate = 0.85; // Leicht verzögert und bedrohlich
+        window.speechSynthesis.speak(msg);
+      };
+
+      const testPirateVoice = () => {
+        speakPirate("Arrr! Captain Blackbeard ist an Bord. Zeigt mir eure Dublonen!");
+      };
+
+      const fetchPirateQuote = async () => {
+        if (!apiKey) return;
+        
+        const playerBidsText = players.map(p => `${p.name} sagt ${tempBids[p.id]} Stiche an`).join(', ');
+        
+        const prompt = `Du bist Captain Blackbeard, ein extrem sarkastischer, fieser und betrunkener Pirat, der ein paar Freunden beim Kartenspiel "Skull King" zuschaut.
+Wir befinden uns mitten im Spiel (Runde ${currentRound}).
+Die Ansagen der Spieler sind: ${playerBidsText}.
+Gib mir einen einzigen, extrem kurzen und fiesen Spruch (maximal 15 Wörter!), den du völlig unerwartet mitten in den Raum brüllst, um die Spieler aus dem Konzept zu bringen. 
+Erwähne einen der Spieler beim Namen. Sei richtig gemein und nutze Piraten-Slang. Kein "Hallo", leg direkt los!`;
+
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+              contents: [{parts: [{text: prompt}]}],
+              generationConfig: { maxOutputTokens: 50, temperature: 0.9 } // Hohe Temperatur für kreative Sprüche
+            })
+          });
+          const data = await res.json();
+          if (data.candidates && data.candidates[0].content.parts[0].text) {
+            return data.candidates[0].content.parts[0].text.replace(/\*/g, ''); // Sternchen (Markdown) entfernen
+          }
+        } catch(e) {
+          console.error("API Fehler", e);
+          return null;
+        }
+      };
+
+      // Der Zufalls-Timer, der nur läuft, wenn man in der "Stiche-Eintragen" Phase ist
+      useEffect(() => {
+        if (phase === 'received' && apiKey) {
+          
+          const planNextJumpscare = () => {
+            // Zufällige Zeit zwischen 15 und 35 Sekunden
+            const randomDelay = Math.floor(Math.random() * 20000) + 15000;
+            
+            pirateTimerRef.current = setTimeout(async () => {
+              const quote = await fetchPirateQuote();
+              if (quote) {
+                speakPirate(quote);
+              }
+              // Plant direkt den nächsten Spruch, falls die Runde ewig dauert
+              planNextJumpscare();
+            }, randomDelay);
+          };
+
+          planNextJumpscare();
+        }
+
+        // Cleanup: Stoppt den Timer und den Pirat, wenn die Runde vorbei ist
+        return () => {
+          if (pirateTimerRef.current) clearTimeout(pirateTimerRef.current);
+          window.speechSynthesis.cancel();
+        };
+      }, [phase, currentRound, apiKey]);
+      // ==========================================
+
 
       const handleAddPlayer = () => {
         if (playerNameInput.trim()) {
@@ -171,7 +259,6 @@
         return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
       };
       
-      // Abgeleitete Werte (immer aktuell)
       const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
       const isValidStichCount = totalReceivedStiche === currentRound;
@@ -263,8 +350,6 @@
                 );
               })}
             </svg>
-            
-            {/* NEU: Legende für das Chart */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '16px', fontSize: '12px', padding: '0 8px' }}>
               {players.map((p, idx) => {
                 const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
@@ -292,7 +377,6 @@
       return (
         <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative' }}>
           
-          {/* NEU: Strategie Toast Einblendung */}
           {toastMsg && (
             <div style={{
               position: 'fixed', top: '50%', left: '50%',
@@ -326,6 +410,16 @@
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI) mitspielen lassen
               </label>
+              
+              {/* KI PIRATEN SETUP */}
+              <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#1e293b', borderRadius: '10px', border: '1px solid #334155' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#f43f5e' }}>🏴‍☠️ Captain Blackbeard aktivieren</h4>
+                <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 10px 0' }}>Gib deinen Gemini API Key ein, damit der Pirat euch während der Runde beleidigen kann.</p>
+                <input type="password" placeholder="Gemini API Key..." value={apiKey} onChange={e => saveApiKey(e.target.value)}
+                  style={{ width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '6px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #475569', marginBottom: '10px' }} />
+                {apiKey && <button onClick={testPirateVoice} style={{ width: '100%', padding: '8px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px' }}>🔊 Stimme testen</button>}
+              </div>
+
               <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length + (includeOma ? 1 : 0)} Spieler)</button>
             </div>
           )}
@@ -333,7 +427,9 @@
           {phase !== 'setup' && (
             <>
               <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
-                <span style={{ fontWeight: 'bold' }}>{phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}</span>
+                <span style={{ fontWeight: 'bold', color: apiKey ? '#f43f5e' : '#fff' }}>
+                  {phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10 ${apiKey ? '🏴‍☠️' : ''}`}
+                </span>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>📈</button>}
                   <button onClick={() => { if(confirm('Reset?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>🗑️</button>
@@ -381,7 +477,6 @@
               {phase !== 'finished' && (
                 <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
                   
-                  {/* Info-Button neben dem Header eingebaut für Strategie-Replay */}
                   <div style={{ color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
                     {phase === 'bids' ? <span>🔮 Ansagen</span> : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
                     {phase === 'received' && (
@@ -398,7 +493,6 @@
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
                         
-                        {/* NEU: Ansage wird im Receive-Screen eingeblendet */}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Start</span>}</span>
                           {phase === 'received' && (
@@ -457,7 +551,7 @@
                           setShowConfirmModal(false); 
                           initReceived(); 
                           setPhase('received'); 
-                          showStrategyOverlay(); // <-- Hier wird die Einblendung getriggert!
+                          showStrategyOverlay(); 
                         }} 
                         style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>
                         ✅ Stimmt so!
