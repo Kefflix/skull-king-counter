@@ -1,51 +1,62 @@
-<!-- STREAMING_CHUNK:Initializing HTML structure and meta tags... -->
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
+  <!-- Sorgt für perfektes App-Feeling auf dem Handy -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0f172a" />
+  <meta name="theme-color" content="#1e293b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Skull King & Captain Blackbeard</title>
+  <meta name="mobile-web-app-capable" content="yes" />
+  
+  <title>Skull King Counter</title>
   
   <style>
     body {
-      margin: 0; padding: 0; background-color: #0f172a; overscroll-behavior-y: contain; 
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      /* Verhindert das nervige Neuladen, wenn man auf dem Handy nach unten zieht */
+      overscroll-behavior-y: contain; 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    * { user-select: none; -webkit-user-select: none; }
-    input { user-select: auto; -webkit-user-select: auto; }
+    /* Deaktiviert Textmarkierung für App-Feeling */
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    input {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
     
+    /* Animation für die Strategie-Einblendung (Toast) */
     @keyframes toastFade {
       0% { opacity: 0; transform: translate(-50%, -30%); }
       10% { opacity: 1; transform: translate(-50%, -50%); }
       90% { opacity: 1; transform: translate(-50%, -50%); }
       100% { opacity: 0; transform: translate(-50%, -70%); }
     }
-    @keyframes pulseGlow {
-      0% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 2px rgba(244,63,94,0.6)); }
-      50% { opacity: 0.6; transform: scale(1.08); filter: drop-shadow(0 0 8px rgba(244,63,94,0.9)); }
-      100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 2px rgba(244,63,94,0.6)); }
-    }
   </style>
 
-  <!-- React, ReactDOM, Babel -->
+  <!-- React & Babel via CDN laden -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
-<!-- STREAMING_CHUNK:Mounting React Root element... -->
   <div id="root"></div>
 
+  <!-- Hier startet die App Logic -->
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const PLAYER_COLORS = ['#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'];
+    const PLAYER_COLORS = [
+      '#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'
+    ];
 
     function App() {
-      const [phase, setPhase] = useState('setup'); // setup, bids, received, finished
+      const [phase, setPhase] = useState('setup');
       const [players, setPlayers] = useState([]);
       const [playerNameInput, setPlayerNameInput] = useState('');
       const [includeOma, setIncludeOma] = useState(false);
@@ -58,22 +69,14 @@
       const [tempReceived, setTempReceived] = useState({});
       const [tempBonus, setTempBonus] = useState({});
       const [showConfirmModal, setShowConfirmModal] = useState(false);
-      const [showSettingsModal, setShowSettingsModal] = useState(false);
       
       const [toastMsg, setToastMsg] = useState(null);
       const toastTimer = useRef(null);
-      const [isLoaded, setIsLoaded] = useState(false);
-      
-      // API & PIRATE STATES
-      const [geminiApiKey, setGeminiApiKey] = useState('');
-      const [elevenKey, setElevenKey] = useState('');
-      const [elevenVoiceId, setElevenVoiceId] = useState('21m00Tcm4TlvDq8ikWAM'); // Default Rachel / or custom pirate voice ID
-      const [pirateStatus, setPirateStatus] = useState('idle'); // idle, waiting, thinking, speaking, error
-      const pirateTimerRef = useRef(null);
 
-      // STREAMING_CHUNK:Loading state from localStorage...
+      const [isLoaded, setIsLoaded] = useState(false);
+
       useEffect(() => {
-        const saved = localStorage.getItem('skullKingProState');
+        const saved = localStorage.getItem('skullKingState');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
@@ -85,183 +88,20 @@
             setTempReceived(parsed.tempReceived || {});
             setTempBonus(parsed.tempBonus || {});
             setIncludeOma(parsed.includeOma || false);
-          } catch (e) { console.error("Fehler beim Laden", e); }
+          } catch (e) {
+            console.error("Fehler beim Laden", e);
+          }
         }
-        
-        const gKey = localStorage.getItem('sk_geminiKey');
-        if (gKey) setGeminiApiKey(gKey);
-        const eKey = localStorage.getItem('sk_elevenKey');
-        if (eKey) setElevenKey(eKey);
-        const eVoice = localStorage.getItem('sk_elevenVoiceId');
-        if (eVoice) setElevenVoiceId(eVoice);
-
         setIsLoaded(true);
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.getVoices();
-        }
       }, []);
 
-      // STREAMING_CHUNK:Saving state to localStorage...
       useEffect(() => {
         if (isLoaded) {
           const stateToSave = { phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma };
-          localStorage.setItem('skullKingProState', JSON.stringify(stateToSave));
+          localStorage.setItem('skullKingState', JSON.stringify(stateToSave));
         }
       }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma, isLoaded]);
 
-      const saveSettings = (gKey, eKey, eVoice) => {
-        setGeminiApiKey(gKey);
-        setElevenKey(eKey);
-        setElevenVoiceId(eVoice);
-        localStorage.setItem('sk_geminiKey', gKey);
-        localStorage.setItem('sk_elevenKey', eKey);
-        localStorage.setItem('sk_elevenVoiceId', eVoice);
-        setShowSettingsModal(false);
-      };
-
-      // ==========================================
-      // STREAMING_CHUNK:Configuring Audio & ElevenLabs / TTS Engine...
-      // ==========================================
-      const speakPirate = async (text) => {
-        setPirateStatus('speaking');
-        
-        // 1. Wenn ElevenLabs Key & Voice ID vorhanden sind, nutze das High-End Audio-Streaming!
-        if (elevenKey && elevenVoiceId) {
-          try {
-            const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${elevenVoiceId}`, {
-              method: 'POST',
-              headers: {
-                'Accept': 'audio/mpeg',
-                'Content-Type': 'application/json',
-                'xi-api-key': elevenKey
-              },
-              body: JSON.stringify({
-                text: text,
-                model_id: "eleven_multilingual_v2",
-                voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.35, use_speaker_boost: true }
-              })
-            });
-
-            if (!res.ok) throw new Error('ElevenLabs API Limit oder Key ungültig');
-            const blob = await res.blob();
-            const audioUrl = URL.createObjectURL(blob);
-            const audio = new Audio(audioUrl);
-            
-            audio.onended = () => setPirateStatus('waiting');
-            audio.onerror = () => fallbackBrowserTTS(text);
-            await audio.play();
-            return;
-          } catch (e) {
-            console.warn("ElevenLabs Fehler, nutze Fallback Browser TTS:", e);
-          }
-        }
-
-        // 2. Robuster Browser TTS Fallback (MIT GARBAGE COLLECTION FIX!)
-        fallbackBrowserTTS(text);
-      };
-
-      const fallbackBrowserTTS = (text) => {
-        if (!('speechSynthesis' in window)) {
-          setPirateStatus('error');
-          return;
-        }
-
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = 'de-DE';
-        
-        const voices = window.speechSynthesis.getVoices();
-        const deVoices = voices.filter(v => v.lang.includes('de'));
-        const maleVoice = deVoices.find(v => v.name.toLowerCase().includes('martin') || v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('männlich') || v.name.toLowerCase().includes('stefan'));
-        
-        if (maleVoice) msg.voice = maleVoice;
-        else if (deVoices.length > 0) msg.voice = deVoices[0];
-
-        msg.pitch = 0.65; // Knackig tiefe Piratenstimme
-        msg.rate = 0.92;
-        
-        // WICHTIG: Global speichern, damit Garbage Collector das Objekt nicht zerstört!
-        window.currentUtterance = msg;
-        
-        msg.onend = () => setPirateStatus('waiting');
-        msg.onerror = () => setPirateStatus('error');
-
-        window.speechSynthesis.speak(msg);
-      };
-
-      const testVoice = () => {
-        speakPirate("Arrr! Captain Blackbeard hat das Steuer übernommen. Macht euch bereit für eine Welle voll Spott!");
-      };
-
-      // ==========================================
-      // STREAMING_CHUNK:Setting up Gemini AI Pirate Taunt Engine...
-      // ==========================================
-      const fetchPirateQuote = async () => {
-        if (!geminiApiKey) return null;
-        setPirateStatus('thinking');
-        
-        const playerBidsText = players.map(p => `${p.name} sagt ${tempBids[p.id]} Stiche`).join(', ');
-        
-        const prompt = `Du bist Captain Blackbeard, ein extrem sarkastischer, fieser und lustiger Pirat, der einer Gruppe von Freunden beim Kartenspiel "Skull King" zusieht. Wir sind in Runde ${currentRound}.
-Die aktuellen Ansagen am Tisch sind: ${playerBidsText}.
-Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörter), den du plötzlich in den Raum brüllst. Nutze Piraten-Vokabular (Arrr, Klabautermann, Kielholen, Landratte, Dublonen). Wähle zufällig einen Spieler beim Namen und mach dich humorvoll über seine Ansage lustig (z.B. wenn er 0 ansagt oder zu viele). Kein Hallo, leg sofort los!`;
-
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              contents: [{parts: [{text: prompt}]}],
-              generationConfig: { maxOutputTokens: 60, temperature: 1.0 }
-            })
-          });
-          
-          if (!res.ok) throw new Error("Gemini API Fehler");
-          
-          const data = await res.json();
-          if (data.candidates && data.candidates[0].content.parts[0].text) {
-            return data.candidates[0].content.parts[0].text.replace(/\*/g, '').trim();
-          }
-        } catch(e) {
-          console.error("Gemini Fehler:", e);
-          setPirateStatus('error');
-          return null;
-        }
-        return null;
-      };
-
-      // STREAMING_CHUNK:Configuring autonomous pirate timer loop...
-      useEffect(() => {
-        if (phase === 'received' && geminiApiKey) {
-          setPirateStatus('waiting');
-          
-          const planNextJumpscare = () => {
-            // Zufälliger Timer zwischen 15 und 30 Sekunden
-            const randomDelay = Math.floor(Math.random() * 15000) + 15000;
-            
-            pirateTimerRef.current = setTimeout(async () => {
-              const quote = await fetchPirateQuote();
-              if (quote) {
-                await speakPirate(quote);
-              }
-              planNextJumpscare();
-            }, randomDelay);
-          };
-
-          planNextJumpscare();
-        } else {
-          setPirateStatus('idle');
-        }
-
-        return () => {
-          if (pirateTimerRef.current) clearTimeout(pirateTimerRef.current);
-          if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-        };
-      }, [phase, currentRound, geminiApiKey]);
-
-      // ==========================================
-      // STREAMING_CHUNK:Defining game logic & state handlers...
-      // ==========================================
       const handleAddPlayer = () => {
         if (playerNameInput.trim()) {
           setPlayers([...players, { id: Date.now().toString(), name: playerNameInput.trim(), isOma: false }]);
@@ -280,13 +120,11 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
           setCurrentRound(1);
           setHistory({});
           setPhase('bids');
-        } else {
-          setToastMsg({ title: "Zu wenige Spieler", sub: "Mindestens 2 Spieler erforderlich." });
-          setTimeout(() => setToastMsg(null), 2500);
-        }
+        } else alert("Bitte mindestens 2 Spieler (oder 1 + Oma) hinzufügen.");
       };
 
       const getStartingPlayerIndex = (round, count = players.length) => count > 0 ? (round - 1) % count : 0;
+      const getDealerPlayerIndex = (round, count = players.length) => count > 0 ? (round - 2 + count) % count : 0;
 
       const initBids = (currentPlayers = players, round = currentRound) => {
         const initialBids = {};
@@ -294,7 +132,8 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
         currentPlayers.forEach((p, index) => {
           if (p.isOma) {
             const expectedTricks = round / pCount;
-            initialBids[p.id] = index === getStartingPlayerIndex(round, pCount) ? Math.ceil(expectedTricks) : Math.floor(expectedTricks);
+            const isStarter = index === getStartingPlayerIndex(round, pCount);
+            initialBids[p.id] = isStarter ? Math.ceil(expectedTricks) : Math.floor(expectedTricks);
           } else {
             initialBids[p.id] = 0;
           }
@@ -332,17 +171,20 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
         return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
       };
       
+      // Abgeleitete Werte (immer aktuell)
       const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
       const isValidStichCount = totalReceivedStiche === currentRound;
 
-      const showStrategyOverlay = () => {
+      const getStrategyMessage = () => {
         const diff = totalBids - currentRound;
-        let msg = { title: "Genau auf Punkt! ⚖️", sub: "Die Ansagen treffen exakt die Rundenanzahl." };
-        if (diff > 0) msg = { title: "Kämpfen! ⚔️", sub: `Es wurden ${diff} Stich(e) zu viel angesagt.` };
-        if (diff < 0) msg = { title: "Passiv bleiben 🛡️", sub: `Es wurden ${Math.abs(diff)} Stich(e) zu wenig angesagt.` };
-        
-        setToastMsg(msg);
+        if (diff > 0) return { title: "Kämpfen! ⚔️", sub: `Es wurden ${diff} Stich(e) zu viel angesagt.` };
+        if (diff < 0) return { title: "Passiv spielen 🛡️", sub: `Es wurden ${Math.abs(diff)} Stich(e) zu wenig angesagt.` };
+        return { title: "Es geht genau auf! ⚖️", sub: "Jeder kann theoretisch seine Stiche bekommen." };
+      };
+
+      const showStrategyOverlay = () => {
+        setToastMsg(getStrategyMessage());
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMsg(null), 3800);
       };
@@ -361,9 +203,7 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
           setCurrentRound(next);
           initBids(players, next);
           setPhase('bids');
-        } else {
-          setPhase('finished');
-        }
+        } else setPhase('finished');
       };
 
       const getLeaderIds = () => {
@@ -379,7 +219,6 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
         return leaders;
       };
 
-      // STREAMING_CHUNK:Rendering Score Chart component...
       const ScoreChart = () => {
         const maxRoundsCompleted = Object.keys(history).length;
         if (maxRoundsCompleted === 0) return null;
@@ -424,6 +263,8 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
                 );
               })}
             </svg>
+            
+            {/* NEU: Legende für das Chart */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '16px', fontSize: '12px', padding: '0 8px' }}>
               {players.map((p, idx) => {
                 const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
@@ -444,23 +285,14 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
         border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', marginTop: '6px', cursor: dis ? 'not-allowed' : 'pointer'
       });
 
-      if (!isLoaded) return <div style={{ color: '#fff', textAlign: 'center', marginTop: '50px' }}>Lade Kabine...</div>;
+      if (!isLoaded) return <div style={{ color: '#fff', textAlign: 'center', marginTop: '50px' }}>Lade...</div>;
 
       const leaderIds = getLeaderIds();
-
-      // STREAMING_CHUNK:Rendering UI based on app phase...
-      const renderPirateStatusIndicator = () => {
-        if (!geminiApiKey || phase !== 'received') return null;
-        if (pirateStatus === 'waiting') return <span style={{ animation: 'pulseGlow 2s infinite', color: '#38bdf8' }} title="Pirat lauert...">🏴‍☠️⏳</span>;
-        if (pirateStatus === 'thinking') return <span style={{ animation: 'pulseGlow 0.5s infinite', color: '#facc15' }} title="Pirat denkt nach...">🏴‍☠️🧠</span>;
-        if (pirateStatus === 'speaking') return <span style={{ animation: 'pulseGlow 0.3s infinite', color: '#f43f5e' }} title="Pirat brüllt!">🏴‍☠️🗣️</span>;
-        if (pirateStatus === 'error') return <span style={{ color: '#ef4444' }} title="API Fehler">🏴‍☠️❌</span>;
-        return null;
-      };
 
       return (
         <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative' }}>
           
+          {/* NEU: Strategie Toast Einblendung */}
           {toastMsg && (
             <div style={{
               position: 'fixed', top: '50%', left: '50%',
@@ -469,54 +301,42 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
               textAlign: 'center', zIndex: 9999, pointerEvents: 'none',
               animation: 'toastFade 3.8s ease-in-out forwards', width: '80%', maxWidth: '320px'
             }}>
-              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff', marginBottom: '8px' }}>{toastMsg.title}</div>
-              <div style={{ fontSize: '15px', color: '#cbd5e1' }}>{toastMsg.sub}</div>
+              <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#fff', marginBottom: '10px' }}>{toastMsg.title}</div>
+              <div style={{ fontSize: '16px', color: '#cbd5e1' }}>{toastMsg.sub}</div>
             </div>
           )}
 
-          {/* SETUP SCREEN */}
           {phase === 'setup' && (
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 style={{ margin: 0 }}>☠️ Skull King Pro</h2>
-                <button onClick={() => setShowSettingsModal(true)} style={{ background: '#334155', color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 12px', fontSize: '14px', fontWeight: 'bold' }}>⚙️ API / Audio</button>
-              </div>
-
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%' }}>
+              <h2 style={{ textAlign: 'center', margin: 0 }}>☠️ Skull King</h2>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input type="text" placeholder="Spielername..." value={playerNameInput} onChange={e => setPlayerNameInput(e.target.value)}
+                <input type="text" placeholder="Name..." value={playerNameInput} onChange={e => setPlayerNameInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAddPlayer()}
                   style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: '#1e293b', color: '#fff', border: 'none', outline: 'none' }} />
                 <button onClick={handleAddPlayer} style={{ padding: '14px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '18px', fontWeight: 'bold' }}>+</button>
               </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '180px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {players.map((p, i) => (
-                  <div key={p.id} style={{ padding: '12px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={p.id} style={{ padding: '12px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between' }}>
                     <span>{i + 1}. <strong>{p.name}</strong></span>
                     <button onClick={() => handleRemovePlayer(p.id)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '20px' }}>×</button>
                   </div>
                 ))}
               </div>
-
               <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI-Mitspieler)
+                <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI) mitspielen lassen
               </label>
-
-              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Spiel Starten ({players.length + (includeOma ? 1 : 0)})</button>
+              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length + (includeOma ? 1 : 0)} Spieler)</button>
             </div>
           )}
 
-          {/* MAIN GAME INTERFACE */}
           {phase !== 'setup' && (
             <>
-              <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-                <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', color: geminiApiKey ? '#f43f5e' : '#fff' }}>
-                  {phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}
-                  {renderPirateStatusIndicator()}
-                </div>
+              <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+                <span style={{ fontWeight: 'bold' }}>{phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={() => setShowSettingsModal(true)} style={{ backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 10px' }}>⚙️</button>
-                  <button onClick={() => { if(confirm('Spielstand zurücksetzen?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingProState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 10px' }}>🗑️</button>
+                  {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>📈</button>}
+                  <button onClick={() => { if(confirm('Reset?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>🗑️</button>
                 </div>
               </div>
 
@@ -528,7 +348,7 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
                       {players.map((p, i) => (
                         <th key={p.id} style={{ background: leaderIds.includes(p.id) ? '#312e81' : '#1e293b', padding: '8px 2px', borderBottom: '1px solid #475569' }}>
                           <div style={{ fontSize: '14px', color: leaderIds.includes(p.id) ? '#fbbf24' : '#38bdf8', overflow: 'hidden' }}>{leaderIds.includes(p.id) ? '👑 ' : ''}{p.name}</div>
-                          <div style={{ fontSize: '10px', color: '#4ade80' }}>{i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Start' : ''}</div>
+                          <div style={{ fontSize: '10px', color: '#4ade80' }}>{i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}</div>
                         </th>
                       ))}
                     </tr>
@@ -561,8 +381,14 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
               {phase !== 'finished' && (
                 <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
                   
+                  {/* Info-Button neben dem Header eingebaut für Strategie-Replay */}
                   <div style={{ color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-                    {phase === 'bids' ? <span>🔮 Ansagen treffen</span> : <span>🃏 Stiche eingeben ({totalReceivedStiche}/{currentRound})</span>}
+                    {phase === 'bids' ? <span>🔮 Ansagen</span> : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
+                    {phase === 'received' && (
+                       <button onClick={showStrategyOverlay} style={{ background: 'none', border: 'none', fontSize: '20px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                         ℹ️
+                       </button>
+                    )}
                   </div>
                   
                   {players.map((p, i) => {
@@ -572,6 +398,7 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
                         
+                        {/* NEU: Ansage wird im Receive-Screen eingeblendet */}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Start</span>}</span>
                           {phase === 'received' && (
@@ -581,61 +408,59 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
-                          <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
-                          <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
-                          {phase === 'received' && (
-                            <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'11px', fontWeight:'bold' }}>
-                              +{tempBonus[p.id] || 0}
-                            </button>
-                          )}
-                        </div>
+                        {phase === 'bids' && p.isOma ? (
+                          <div style={{ color: '#4ade80', fontWeight: 'bold' }}>Auto: {val}</div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
+                            <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
+                            <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
+                            {phase === 'received' && (
+                              <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold' }}>
+                                +{tempBonus[p.id] || 0}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                   <button onClick={phase === 'bids' ? () => setShowConfirmModal(true) : handleConfirmReceived} disabled={phase === 'received' && !isValidStichCount} style={btnPrimary(phase === 'received' && !isValidStichCount)}>
-                    {phase === 'bids' ? 'Ansagen bestätigen' : (isValidStichCount ? 'Runde abschließen' : 'Stiche stimmen nicht')}
+                    {phase === 'bids' ? 'Bestätigen' : (isValidStichCount ? 'Runde abschließen' : 'Stiche stimmen nicht')}
                   </button>
                 </div>
               )}
 
               {phase === 'finished' && (
                 <div style={{ padding: '16px', backgroundColor: '#1e293b' }}>
-                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Neues Spiel (Gleiche Spieler)</button>
+                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Nochmal (Gleiche Spieler)</button>
                 </div>
               )}
 
-              {/* CONFIRM BIDS MODAL */}
               {showConfirmModal && (
                 <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
                   <div style={{ background: '#1e293b', padding: '24px', borderRadius: '16px', width: '90%', maxWidth: '350px' }}>
-                    <h3 style={{ textAlign: 'center', margin: '0 0 16px' }}>Ansagen prüfen</h3>
+                    <h3 style={{ textAlign: 'center', margin: '0 0 16px' }}>Korrekt angesagt?</h3>
                     {players.map(p => (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #334155' }}>
                         <span>{p.name}</span>
-                        <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8' }}>{tempBids[p.id]}</strong>
+                        <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8' }}>{tempBids[p.id]} {tempBids[p.id] === 0 ? '(Null)' : ''}</strong>
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', paddingTop: '16px' }}>
                       <strong>Summe:</strong>
-                      <strong style={{ color: totalBids > currentRound ? '#ef4444' : totalBids < currentRound ? '#eab308' : '#10b981' }}>{totalBids} / {currentRound}</strong>
+                      <strong style={{ color: totalBids > currentRound ? '#ef4444' : totalBids < currentRound ? '#eab308' : '#10b981' }}>{totalBids}</strong>
                     </div>
                     <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                      <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Ändern</button>
+                      <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Zurück</button>
                       <button onClick={() => { 
-                          // Audio Unlock für Handy Browser
-                          if('speechSynthesis' in window) {
-                            const unlock = new SpeechSynthesisUtterance('');
-                            window.speechSynthesis.speak(unlock);
-                          }
                           setShowConfirmModal(false); 
                           initReceived(); 
                           setPhase('received'); 
-                          showStrategyOverlay(); 
+                          showStrategyOverlay(); // <-- Hier wird die Einblendung getriggert!
                         }} 
                         style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>
-                        ✅ Ab geht's!
+                        ✅ Stimmt so!
                       </button>
                     </div>
                   </div>
@@ -643,62 +468,6 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
               )}
             </>
           )}
-
-          {/* SETTINGS / API MODAL */}
-          {showSettingsModal && (
-            <SettingsModal 
-              geminiKey={geminiApiKey} 
-              elevenKey={elevenKey} 
-              elevenVoiceId={elevenVoiceId} 
-              onSave={saveSettings} 
-              onClose={() => setShowSettingsModal(false)}
-              onTestVoice={testVoice}
-            />
-          )}
-
-        </div>
-      );
-    }
-
-    // SETTINGS COMPONENT WITH ELEVENLABS / GEMINI CONFIG
-    function SettingsModal({ geminiKey, elevenKey, elevenVoiceId, onSave, onClose, onTestVoice }) {
-      const [gVal, setGVal] = useState(geminiKey);
-      const [eVal, setEVal] = useState(elevenKey);
-      const [vVal, setVVal] = useState(elevenVoiceId);
-
-      return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px', boxSizing: 'border-box' }}>
-          <div style={{ background: '#1e293b', padding: '24px', borderRadius: '16px', width: '100%', maxWidth: '400px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h3 style={{ margin: '0 0 16px', color: '#38bdf8', textAlign: 'center' }}>⚙️ KI & Audio Einstellungen</h3>
-            
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>Gemini API Key (Für Piraten-Sprüche):</label>
-              <input type="password" placeholder="AIzaSy..." value={gVal} onChange={e => setGVal(e.target.value)}
-                style={{ width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', background: '#0f172a', color: '#fff', border: '1px solid #475569' }} />
-            </div>
-
-            <div style={{ marginBottom: '16px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>ElevenLabs API Key (Optional - Für Hollywood Audio):</label>
-              <input type="password" placeholder="xi-api-key..." value={eVal} onChange={e => setEVal(e.target.value)}
-                style={{ width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', background: '#0f172a', color: '#fff', border: '1px solid #475569' }} />
-              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>Falls leer, nutzt die App den verbesserten Browser-Ton.</div>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#cbd5e1', display: 'block', marginBottom: '6px' }}>ElevenLabs Voice ID:</label>
-              <input type="text" placeholder="Voice ID (z.B. 21m00Tcm4TlvDq8ikWAM)..." value={vVal} onChange={e => setVVal(e.target.value)}
-                style={{ width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '8px', background: '#0f172a', color: '#fff', border: '1px solid #475569' }} />
-            </div>
-
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-              <button onClick={onTestVoice} style={{ flex: 1, padding: '10px', background: '#334155', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 'bold' }}>🔊 Stimme testen</button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button onClick={onClose} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>Abbrechen</button>
-              <button onClick={() => onSave(gVal, eVal, vVal)} style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: 'bold' }}>Speichern</button>
-            </div>
-          </div>
         </div>
       );
     }
@@ -708,11 +477,3 @@ Generiere einen einzigen, extrem knackigen und humorvollen Spruch (max 18 Wörte
   </script>
 </body>
 </html>
-```eof
-
-### Was ist neu in dieser Version?
-1. **Garbage Collection Fix (`window.currentUtterance`):** Die Browser-Sprachausgabe wird nun permanent im Global-Scope gehalten, damit Handys sie nicht mehr verschlucken.
-2. **ElevenLabs Integration:** In den Einstellungen (`⚙️`) kannst du jetzt optional deinen ElevenLabs Key und deine Voice ID eintragen. Wenn du das tust, wandelt ElevenLabs den Text in absolut realistische, kinoreife Stimmen um, die sich anhören wie ein echter Synchronsprecher.
-3. **Erweiterter Status:** Oben links neben der Rundenanzeige siehst du nun live, was Captain Blackbeard tut (`⏳` = Er lauert, `🧠` = Er generiert den Spruch, `🗣️` = Er spricht). 
-
-Viel Spaß beim nächsten Spieleabend – das wird legendär!
