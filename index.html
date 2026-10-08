@@ -2,32 +2,44 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8" />
+  <!-- Sorgt für perfektes App-Feeling auf dem Handy -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#1e293b" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  
   <title>Skull King Counter</title>
   
   <style>
     body {
-      margin: 0; padding: 0; background-color: #0f172a; overscroll-behavior-y: contain; 
+      margin: 0;
+      padding: 0;
+      background-color: #0f172a;
+      /* Verhindert das nervige Neuladen, wenn man auf dem Handy nach unten zieht */
+      overscroll-behavior-y: contain; 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    * { user-select: none; -webkit-user-select: none; }
-    input { user-select: auto; -webkit-user-select: auto; }
+    /* Deaktiviert Textmarkierung für App-Feeling */
+    * {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    input {
+      user-select: auto;
+      -webkit-user-select: auto;
+    }
+    
+    /* Animation für die Strategie-Einblendung (Toast) */
     @keyframes toastFade {
       0% { opacity: 0; transform: translate(-50%, -30%); }
       10% { opacity: 1; transform: translate(-50%, -50%); }
       90% { opacity: 1; transform: translate(-50%, -50%); }
       100% { opacity: 0; transform: translate(-50%, -70%); }
     }
-    @keyframes pulse {
-      0% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(1.1); }
-      100% { opacity: 1; transform: scale(1); }
-    }
   </style>
 
+  <!-- React & Babel via CDN laden -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -35,10 +47,13 @@
 <body>
   <div id="root"></div>
 
+  <!-- Hier startet die App Logic -->
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    const PLAYER_COLORS = ['#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'];
+    const PLAYER_COLORS = [
+      '#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'
+    ];
 
     function App() {
       const [phase, setPhase] = useState('setup');
@@ -57,12 +72,8 @@
       
       const [toastMsg, setToastMsg] = useState(null);
       const toastTimer = useRef(null);
+
       const [isLoaded, setIsLoaded] = useState(false);
-      
-      // KI PIRATEN STATES
-      const [apiKey, setApiKey] = useState('');
-      const [pirateStatus, setPirateStatus] = useState('idle'); // idle, waiting, thinking, error
-      const pirateTimerRef = useRef(null);
 
       useEffect(() => {
         const saved = localStorage.getItem('skullKingState');
@@ -77,14 +88,11 @@
             setTempReceived(parsed.tempReceived || {});
             setTempBonus(parsed.tempBonus || {});
             setIncludeOma(parsed.includeOma || false);
-          } catch (e) { console.error("Fehler beim Laden", e); }
+          } catch (e) {
+            console.error("Fehler beim Laden", e);
+          }
         }
-        const savedKey = localStorage.getItem('geminiApiKey');
-        if (savedKey) setApiKey(savedKey);
         setIsLoaded(true);
-
-        // Stimmen vorladen (Wichtig für manche Browser)
-        window.speechSynthesis.getVoices();
       }, []);
 
       useEffect(() => {
@@ -93,106 +101,6 @@
           localStorage.setItem('skullKingState', JSON.stringify(stateToSave));
         }
       }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma, isLoaded]);
-
-      const saveApiKey = (val) => {
-        setApiKey(val);
-        localStorage.setItem('geminiApiKey', val);
-      };
-
-      // ==========================================
-      // ☠️ KI PIRATEN LOGIK
-      // ==========================================
-      const speakPirate = (text) => {
-        window.speechSynthesis.cancel(); // Vorheriges abbrechen
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.lang = 'de-DE';
-        
-        // Versuche eine gute Stimme (männlich) zu finden
-        const voices = window.speechSynthesis.getVoices();
-        const deVoices = voices.filter(v => v.lang.includes('de'));
-        const maleVoice = deVoices.find(v => v.name.toLowerCase().includes('martin') || v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('männlich'));
-        
-        if (maleVoice) {
-          msg.voice = maleVoice;
-        } else if (deVoices.length > 0) {
-          msg.voice = deVoices[0]; // Fallback auf erste deutsche Stimme
-        }
-
-        msg.pitch = 0.7; // 0.7 klingt natürlicher als 0.4 (verhindert Roboter-Stottern)
-        msg.rate = 0.95; // Ganz leicht verzögert
-        
-        msg.onend = () => setPirateStatus('waiting'); // Nach dem Sprechen wieder in den Lauer-Modus
-        msg.onerror = () => setPirateStatus('error');
-
-        window.speechSynthesis.speak(msg);
-      };
-
-      const testPirateVoice = () => {
-        speakPirate("Arrr! Ich bin bereit. Macht euch auf etwas gefasst, ihr Landratten!");
-      };
-
-      const fetchPirateQuote = async () => {
-        if (!apiKey) return null;
-        setPirateStatus('thinking'); // Zeigt 🧠 Icon an
-        
-        const playerBidsText = players.map(p => `${p.name} sagt ${tempBids[p.id]}`).join(', ');
-        
-        const prompt = `Du bist Captain Blackbeard, ein fieser Pirat, der ein paar Freunden beim Kartenspiel "Skull King" zuschaut. Wir sind in Runde ${currentRound}. 
-Die Ansagen: ${playerBidsText}.
-Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüllst. Nutze unbedingt Piraten-Slang (Arrr, Klabautermann, Landratte, Kielholen, Dublonen). Erwähne einen Spieler beim Namen. Sei richtig fies. Kein Hallo, leg direkt los!`;
-
-        try {
-          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-              contents: [{parts: [{text: prompt}]}],
-              generationConfig: { maxOutputTokens: 50, temperature: 1.0 }
-            })
-          });
-          
-          if (!res.ok) throw new Error("API Limit oder falscher Key");
-          
-          const data = await res.json();
-          if (data.candidates && data.candidates[0].content.parts[0].text) {
-            return data.candidates[0].content.parts[0].text.replace(/\*/g, ''); 
-          }
-        } catch(e) {
-          console.error("API Fehler", e);
-          setPirateStatus('error');
-          return null;
-        }
-      };
-
-      useEffect(() => {
-        if (phase === 'received' && apiKey) {
-          setPirateStatus('waiting');
-          
-          const planNextJumpscare = () => {
-            // Zufalls-Timer: 15 bis 35 Sekunden
-            const randomDelay = Math.floor(Math.random() * 20000) + 15000;
-            
-            pirateTimerRef.current = setTimeout(async () => {
-              const quote = await fetchPirateQuote();
-              if (quote) {
-                speakPirate(quote);
-                // Planen den nächsten Spruch nach dem aktuellen
-                planNextJumpscare();
-              }
-            }, randomDelay);
-          };
-
-          planNextJumpscare();
-        } else {
-          setPirateStatus('idle');
-        }
-
-        return () => {
-          if (pirateTimerRef.current) clearTimeout(pirateTimerRef.current);
-          window.speechSynthesis.cancel();
-        };
-      }, [phase, currentRound, apiKey]);
-      // ==========================================
 
       const handleAddPlayer = () => {
         if (playerNameInput.trim()) {
@@ -212,10 +120,11 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
           setCurrentRound(1);
           setHistory({});
           setPhase('bids');
-        } else alert("Bitte mindestens 2 Spieler hinzufügen.");
+        } else alert("Bitte mindestens 2 Spieler (oder 1 + Oma) hinzufügen.");
       };
 
       const getStartingPlayerIndex = (round, count = players.length) => count > 0 ? (round - 1) % count : 0;
+      const getDealerPlayerIndex = (round, count = players.length) => count > 0 ? (round - 2 + count) % count : 0;
 
       const initBids = (currentPlayers = players, round = currentRound) => {
         const initialBids = {};
@@ -223,7 +132,8 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
         currentPlayers.forEach((p, index) => {
           if (p.isOma) {
             const expectedTricks = round / pCount;
-            initialBids[p.id] = index === getStartingPlayerIndex(round, pCount) ? Math.ceil(expectedTricks) : Math.floor(expectedTricks);
+            const isStarter = index === getStartingPlayerIndex(round, pCount);
+            initialBids[p.id] = isStarter ? Math.ceil(expectedTricks) : Math.floor(expectedTricks);
           } else {
             initialBids[p.id] = 0;
           }
@@ -261,17 +171,20 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
         return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
       };
       
+      // Abgeleitete Werte (immer aktuell)
       const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
       const isValidStichCount = totalReceivedStiche === currentRound;
 
-      const showStrategyOverlay = () => {
+      const getStrategyMessage = () => {
         const diff = totalBids - currentRound;
-        let msg = { title: "Es geht genau auf! ⚖️", sub: "Jeder kann theoretisch seine Stiche bekommen." };
-        if (diff > 0) msg = { title: "Kämpfen! ⚔️", sub: `Es wurden ${diff} Stich(e) zu viel angesagt.` };
-        if (diff < 0) msg = { title: "Passiv spielen 🛡️", sub: `Es wurden ${Math.abs(diff)} Stich(e) zu wenig angesagt.` };
-        
-        setToastMsg(msg);
+        if (diff > 0) return { title: "Kämpfen! ⚔️", sub: `Es wurden ${diff} Stich(e) zu viel angesagt.` };
+        if (diff < 0) return { title: "Passiv spielen 🛡️", sub: `Es wurden ${Math.abs(diff)} Stich(e) zu wenig angesagt.` };
+        return { title: "Es geht genau auf! ⚖️", sub: "Jeder kann theoretisch seine Stiche bekommen." };
+      };
+
+      const showStrategyOverlay = () => {
+        setToastMsg(getStrategyMessage());
         if (toastTimer.current) clearTimeout(toastTimer.current);
         toastTimer.current = setTimeout(() => setToastMsg(null), 3800);
       };
@@ -306,6 +219,67 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
         return leaders;
       };
 
+      const ScoreChart = () => {
+        const maxRoundsCompleted = Object.keys(history).length;
+        if (maxRoundsCompleted === 0) return null;
+        const width = 340, height = 180, pad = { t: 20, r: 15, b: 25, l: 35 };
+        let minScore = 0, maxScore = 50;
+        players.forEach(p => {
+          for (let r = 1; r <= maxRoundsCompleted; r++) {
+            if (history[r]) {
+              const t = history[r][p.id].total;
+              if (t < minScore) minScore = t;
+              if (t > maxScore) maxScore = t;
+            }
+          }
+        });
+        const range = (maxScore - minScore) || 1;
+        const getX = (r) => pad.l + (r / 10) * (width - pad.l - pad.r);
+        const getY = (s) => height - pad.b - ((s - minScore) / range) * (height - pad.t - pad.b);
+
+        return (
+          <div style={{ backgroundColor: '#1e293b', borderRadius: '12px', padding: '12px', marginTop: '12px' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#38bdf8', textAlign: 'center' }}>📈 Spielverlauf</div>
+            <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+              {minScore <= 0 && maxScore >= 0 && <line x1={pad.l} y1={getY(0)} x2={width - pad.r} y2={getY(0)} stroke="#475569" strokeDasharray="3 3" />}
+              {[0, 2, 4, 6, 8, 10].map(r => (
+                <g key={r}>
+                  <line x1={getX(r)} y1={pad.t} x2={getX(r)} y2={height - pad.b} stroke="#334155" strokeWidth="0.5" />
+                  <text x={getX(r)} y={height - 8} fill="#64748b" fontSize="9" textAnchor="middle">R{r}</text>
+                </g>
+              ))}
+              <text x={pad.l - 5} y={getY(maxScore) + 3} fill="#64748b" fontSize="8" textAnchor="end">{maxScore}</text>
+              <text x={pad.l - 5} y={getY(minScore)} fill="#64748b" fontSize="8" textAnchor="end">{minScore}</text>
+              {players.map((p, idx) => {
+                const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+                const pts = [{ x: getX(0), y: getY(0) }];
+                for (let r = 1; r <= maxRoundsCompleted; r++) if (history[r]) pts.push({ x: getX(r), y: getY(history[r][p.id].total) });
+                const path = pts.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
+                return (
+                  <g key={p.id}>
+                    <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {pts.map((pt, i) => <circle key={i} cx={pt.x} cy={pt.y} r="3" fill={color} stroke="#0f172a" strokeWidth="1" />)}
+                  </g>
+                );
+              })}
+            </svg>
+            
+            {/* NEU: Legende für das Chart */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '16px', fontSize: '12px', padding: '0 8px' }}>
+              {players.map((p, idx) => {
+                const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '12px', height: '12px', backgroundColor: color, borderRadius: '3px' }}></div>
+                    <span style={{ color: '#cbd5e1', fontWeight: 'bold' }}>{p.name}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      };
+
       const btnPrimary = (dis) => ({
         width: '100%', padding: '14px', backgroundColor: dis ? '#475569' : '#2563eb', color: dis ? '#94a3b8' : '#fff',
         border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', marginTop: '6px', cursor: dis ? 'not-allowed' : 'pointer'
@@ -315,18 +289,10 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
 
       const leaderIds = getLeaderIds();
 
-      // Rendern des Piraten-Status-Icons
-      const renderPirateStatus = () => {
-        if (!apiKey || phase !== 'received') return null;
-        if (pirateStatus === 'waiting') return <span style={{ animation: 'pulse 2s infinite' }}>🏴‍☠️⏳</span>;
-        if (pirateStatus === 'thinking') return <span style={{ animation: 'pulse 0.5s infinite' }}>🏴‍☠️🧠</span>;
-        if (pirateStatus === 'error') return <span>🏴‍☠️❌</span>;
-        return null;
-      };
-
       return (
         <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative' }}>
           
+          {/* NEU: Strategie Toast Einblendung */}
           {toastMsg && (
             <div style={{
               position: 'fixed', top: '50%', left: '50%',
@@ -357,27 +323,19 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
                   </div>
                 ))}
               </div>
-              
-              <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#1e293b', borderRadius: '10px', border: '1px solid #334155' }}>
-                <h4 style={{ margin: '0 0 10px 0', color: '#f43f5e' }}>🏴‍☠️ Captain Blackbeard</h4>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 10px 0' }}>API Key eingeben, Lautstärke hochdrehen!</p>
-                <input type="password" placeholder="Gemini API Key..." value={apiKey} onChange={e => saveApiKey(e.target.value)}
-                  style={{ width: '100%', padding: '10px', boxSizing: 'border-box', borderRadius: '6px', backgroundColor: '#0f172a', color: '#fff', border: '1px solid #475569', marginBottom: '10px' }} />
-                {apiKey && <button onClick={testPirateVoice} style={{ width: '100%', padding: '8px', backgroundColor: '#334155', color: '#fff', border: 'none', borderRadius: '6px' }}>🔊 Stimme testen</button>}
-              </div>
-
-              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length} Spieler)</button>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI) mitspielen lassen
+              </label>
+              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length + (includeOma ? 1 : 0)} Spieler)</button>
             </div>
           )}
 
           {phase !== 'setup' && (
             <>
               <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
-                <span style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', color: apiKey ? '#f43f5e' : '#fff' }}>
-                  {phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}
-                  {renderPirateStatus()}
-                </span>
+                <span style={{ fontWeight: 'bold' }}>{phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
+                  {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>📈</button>}
                   <button onClick={() => { if(confirm('Reset?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>🗑️</button>
                 </div>
               </div>
@@ -417,13 +375,20 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
                     ))}
                   </tbody>
                 </table>
+                {(showChartInGame || phase === 'finished') && <ScoreChart />}
               </div>
 
               {phase !== 'finished' && (
                 <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
                   
+                  {/* Info-Button neben dem Header eingebaut für Strategie-Replay */}
                   <div style={{ color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
                     {phase === 'bids' ? <span>🔮 Ansagen</span> : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
+                    {phase === 'received' && (
+                       <button onClick={showStrategyOverlay} style={{ background: 'none', border: 'none', fontSize: '20px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                         ℹ️
+                       </button>
+                    )}
                   </div>
                   
                   {players.map((p, i) => {
@@ -433,6 +398,7 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
                         
+                        {/* NEU: Ansage wird im Receive-Screen eingeblendet */}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Start</span>}</span>
                           {phase === 'received' && (
@@ -442,22 +408,32 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
-                          <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
-                          <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
-                          {phase === 'received' && (
-                            <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold' }}>
-                              +{tempBonus[p.id] || 0}
-                            </button>
-                          )}
-                        </div>
+                        {phase === 'bids' && p.isOma ? (
+                          <div style={{ color: '#4ade80', fontWeight: 'bold' }}>Auto: {val}</div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
+                            <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
+                            <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
+                            {phase === 'received' && (
+                              <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold' }}>
+                                +{tempBonus[p.id] || 0}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
                   <button onClick={phase === 'bids' ? () => setShowConfirmModal(true) : handleConfirmReceived} disabled={phase === 'received' && !isValidStichCount} style={btnPrimary(phase === 'received' && !isValidStichCount)}>
                     {phase === 'bids' ? 'Bestätigen' : (isValidStichCount ? 'Runde abschließen' : 'Stiche stimmen nicht')}
                   </button>
+                </div>
+              )}
+
+              {phase === 'finished' && (
+                <div style={{ padding: '16px', backgroundColor: '#1e293b' }}>
+                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Nochmal (Gleiche Spieler)</button>
                 </div>
               )}
 
@@ -468,25 +444,20 @@ Gib mir einen einzigen, extrem kurzen Spruch (max 15 Wörter), den du reinbrüll
                     {players.map(p => (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px', borderBottom: '1px solid #334155' }}>
                         <span>{p.name}</span>
-                        <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8' }}>{tempBids[p.id]}</strong>
+                        <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8' }}>{tempBids[p.id]} {tempBids[p.id] === 0 ? '(Null)' : ''}</strong>
                       </div>
                     ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', paddingTop: '16px' }}>
+                      <strong>Summe:</strong>
+                      <strong style={{ color: totalBids > currentRound ? '#ef4444' : totalBids < currentRound ? '#eab308' : '#10b981' }}>{totalBids}</strong>
+                    </div>
                     <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                       <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Zurück</button>
                       <button onClick={() => { 
-                          
-                          // WICHTIG: AUDIO UNLOCK HACK!
-                          // Erzeugt einen lautlosen Ton direkt beim Klick,
-                          // damit das Handy die spätere KI-Sprachausgabe durch den Timer nicht blockiert!
-                          if(apiKey) {
-                            const unlockMsg = new SpeechSynthesisUtterance('');
-                            window.speechSynthesis.speak(unlockMsg);
-                          }
-
                           setShowConfirmModal(false); 
                           initReceived(); 
                           setPhase('received'); 
-                          showStrategyOverlay(); 
+                          showStrategyOverlay(); // <-- Hier wird die Einblendung getriggert!
                         }} 
                         style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>
                         ✅ Stimmt so!
