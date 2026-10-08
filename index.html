@@ -29,6 +29,14 @@
       user-select: auto;
       -webkit-user-select: auto;
     }
+    
+    /* Animation für die Strategie-Einblendung (Toast) */
+    @keyframes toastFade {
+      0% { opacity: 0; transform: translate(-50%, -30%); }
+      10% { opacity: 1; transform: translate(-50%, -50%); }
+      90% { opacity: 1; transform: translate(-50%, -50%); }
+      100% { opacity: 0; transform: translate(-50%, -70%); }
+    }
   </style>
 
   <!-- React & Babel via CDN laden -->
@@ -41,7 +49,7 @@
 
   <!-- Hier startet die App Logic -->
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     const PLAYER_COLORS = [
       '#38bdf8', '#f43f5e', '#10b981', '#fbbf24', '#a855f7', '#f97316', '#fb7185', '#2dd4bf'
@@ -61,6 +69,9 @@
       const [tempReceived, setTempReceived] = useState({});
       const [tempBonus, setTempBonus] = useState({});
       const [showConfirmModal, setShowConfirmModal] = useState(false);
+      
+      const [toastMsg, setToastMsg] = useState(null);
+      const toastTimer = useRef(null);
 
       const [isLoaded, setIsLoaded] = useState(false);
 
@@ -159,9 +170,24 @@
         if (bid === 0) return received === 0 ? (round * 10) + bonus : -(round * 10);
         return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
       };
-
+      
+      // Abgeleitete Werte (immer aktuell)
+      const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
       const isValidStichCount = totalReceivedStiche === currentRound;
+
+      const getStrategyMessage = () => {
+        const diff = totalBids - currentRound;
+        if (diff > 0) return { title: "Kämpfen! ⚔️", sub: `Es wurden ${diff} Stich(e) zu viel angesagt.` };
+        if (diff < 0) return { title: "Passiv spielen 🛡️", sub: `Es wurden ${Math.abs(diff)} Stich(e) zu wenig angesagt.` };
+        return { title: "Es geht genau auf! ⚖️", sub: "Jeder kann theoretisch seine Stiche bekommen." };
+      };
+
+      const showStrategyOverlay = () => {
+        setToastMsg(getStrategyMessage());
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMsg(null), 3800);
+      };
 
       const handleConfirmReceived = () => {
         if (!isValidStichCount) return;
@@ -237,6 +263,19 @@
                 );
               })}
             </svg>
+            
+            {/* NEU: Legende für das Chart */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '16px', fontSize: '12px', padding: '0 8px' }}>
+              {players.map((p, idx) => {
+                const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div style={{ width: '12px', height: '12px', backgroundColor: color, borderRadius: '3px' }}></div>
+                    <span style={{ color: '#cbd5e1', fontWeight: 'bold' }}>{p.name}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       };
@@ -248,11 +287,25 @@
 
       if (!isLoaded) return <div style={{ color: '#fff', textAlign: 'center', marginTop: '50px' }}>Lade...</div>;
 
-      const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const leaderIds = getLeaderIds();
 
       return (
-        <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff' }}>
+        <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative' }}>
+          
+          {/* NEU: Strategie Toast Einblendung */}
+          {toastMsg && (
+            <div style={{
+              position: 'fixed', top: '50%', left: '50%',
+              background: 'rgba(15, 23, 42, 0.95)', padding: '24px', borderRadius: '16px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.8)', border: '1px solid #334155',
+              textAlign: 'center', zIndex: 9999, pointerEvents: 'none',
+              animation: 'toastFade 3.8s ease-in-out forwards', width: '80%', maxWidth: '320px'
+            }}>
+              <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#fff', marginBottom: '10px' }}>{toastMsg.title}</div>
+              <div style={{ fontSize: '16px', color: '#cbd5e1' }}>{toastMsg.sub}</div>
+            </div>
+          )}
+
           {phase === 'setup' && (
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%' }}>
               <h2 style={{ textAlign: 'center', margin: 0 }}>☠️ Skull King</h2>
@@ -327,16 +380,34 @@
 
               {phase !== 'finished' && (
                 <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
-                  <div style={{ textAlign: 'center', color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px' }}>
-                    {phase === 'bids' ? '🔮 Ansagen' : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
+                  
+                  {/* Info-Button neben dem Header eingebaut für Strategie-Replay */}
+                  <div style={{ color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
+                    {phase === 'bids' ? <span>🔮 Ansagen</span> : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
+                    {phase === 'received' && (
+                       <button onClick={showStrategyOverlay} style={{ background: 'none', border: 'none', fontSize: '20px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                         ℹ️
+                       </button>
+                    )}
                   </div>
+                  
                   {players.map((p, i) => {
                     const val = phase === 'bids' ? tempBids[p.id] : tempReceived[p.id];
                     const setter = phase === 'bids' ? setTempBids : setTempReceived;
                     const isStarter = i === getStartingPlayerIndex(currentRound);
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
-                        <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80'}}><br/>🎯 Start</span>}</span>
+                        
+                        {/* NEU: Ansage wird im Receive-Screen eingeblendet */}
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Start</span>}</span>
+                          {phase === 'received' && (
+                            <span style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
+                              Ansage: <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8', fontSize: '14px' }}>{tempBids[p.id]}</strong>
+                            </span>
+                          )}
+                        </div>
+
                         {phase === 'bids' && p.isOma ? (
                           <div style={{ color: '#4ade80', fontWeight: 'bold' }}>Auto: {val}</div>
                         ) : (
@@ -382,7 +453,15 @@
                     </div>
                     <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                       <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Zurück</button>
-                      <button onClick={() => { setShowConfirmModal(false); initReceived(); setPhase('received'); }} style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>✅ Stimmt so!</button>
+                      <button onClick={() => { 
+                          setShowConfirmModal(false); 
+                          initReceived(); 
+                          setPhase('received'); 
+                          showStrategyOverlay(); // <-- Hier wird die Einblendung getriggert!
+                        }} 
+                        style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>
+                        ✅ Stimmt so!
+                      </button>
                     </div>
                   </div>
                 </div>
