@@ -187,7 +187,6 @@
       const cycleBonus = (pId) => {
         const bid = tempBids[pId] || 0;
         const received = tempReceived[pId] || 0;
-        // Keine Extrapunkte bei 0 Ansagen oder wenn Ansage nicht getroffen
         if (bid === 0 || bid !== received) return;
         
         const options = [0, 30, 50];
@@ -290,7 +289,6 @@
                 const pts = [{ x: getX(0), y: getY(0) }];
                 for (let r = 1; r <= maxRoundsCompleted; r++) if (history[r]) pts.push({ x: getX(r), y: getY(history[r][p.id].total) });
                 const path = pts.reduce((acc, pt, i) => `${acc} ${i === 0 ? 'M' : 'L'} ${pt.x} ${pt.y}`, '');
-                // Verschiedene Linien-Muster bei Überschneidungen (idx 0 durchgezogen, 1 gestrichelt, 2 punktiert etc.)
                 const dashArray = idx === 0 ? "none" : idx === 1 ? "6 3" : idx === 2 ? "2 2" : "4 4";
                 return (
                   <g key={p.id}>
@@ -386,24 +384,27 @@
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', tableLayout: 'fixed' }}>
-                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#1e293b' }}>
+                  <thead>
                     <tr>
-                      <th style={{ padding: '8px 2px', background: '#1e293b', width: '32px', borderBottom: '1px solid #475569' }}>Rd</th>
-                      {players.map((p, i) => (
-                        <th key={p.id} style={{ background: leaderIds.includes(p.id) ? '#312e81' : '#1e293b', padding: '8px 2px', borderBottom: '1px solid #475569' }}>
-                          <div style={{ fontSize: '13px', color: leaderIds.includes(p.id) ? '#fbbf24' : '#38bdf8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {leaderIds.includes(p.id) ? '👑 ' : ''}{p.name}
-                          </div>
-                          <div style={{ fontSize: '10px', color: '#4ade80', height: '14px' }}>
-                            {i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}
-                          </div>
-                          <div style={{ fontSize: '9px', color: '#94a3b8', display: 'flex', justifyContent: 'space-around', marginTop: '2px', borderTop: '1px solid #334155', paddingTop: '2px' }}>
-                            <span title="Punkte Gesamt">Pkt</span>
-                            <span title="Ansage">Ans</span>
-                            <span title="Erhaltene Stiche">Erh</span>
-                          </div>
-                        </th>
-                      ))}
+                      <th style={{ position: 'sticky', top: 0, zIndex: 10, padding: '8px 2px', background: '#1e293b', width: '32px', borderBottom: '1px solid #475569' }}>Rd</th>
+                      {players.map((p, i) => {
+                        const isLeader = leaderIds.includes(p.id);
+                        return (
+                          <th key={p.id} style={{ position: 'sticky', top: 0, zIndex: 10, background: isLeader ? '#312e81' : '#1e293b', padding: '8px 2px', borderBottom: '1px solid #475569' }}>
+                            <div style={{ fontSize: '13px', color: isLeader ? '#fbbf24' : '#38bdf8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {isLeader ? '👑 ' : ''}{p.name}
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#4ade80', height: '14px' }}>
+                              {i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}
+                            </div>
+                            <div style={{ fontSize: '9px', color: '#94a3b8', display: 'flex', justifyContent: 'space-around', marginTop: '2px', borderTop: '1px solid #334155', paddingTop: '2px' }}>
+                              <span title="Punkte Gesamt">Pkt</span>
+                              <span title="Ansage">Ans</span>
+                              <span title="Erhaltene Stiche">Erh</span>
+                            </div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
