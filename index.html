@@ -30,7 +30,7 @@
       -webkit-user-select: auto;
     }
     
-    /* Animation für die Strategie-Einblendung (Toast) */
+    /* Animation für die Einblendungen (Toast) */
     @keyframes toastFade {
       0% { opacity: 0; transform: translate(-50%, -30%); }
       10% { opacity: 1; transform: translate(-50%, -50%); }
@@ -59,7 +59,6 @@
       const [phase, setPhase] = useState('setup');
       const [players, setPlayers] = useState([]);
       const [playerNameInput, setPlayerNameInput] = useState('');
-      const [includeOma, setIncludeOma] = useState(false);
       
       const [currentRound, setCurrentRound] = useState(1);
       const [history, setHistory] = useState({});
@@ -87,7 +86,6 @@
             setTempBids(parsed.tempBids || {});
             setTempReceived(parsed.tempReceived || {});
             setTempBonus(parsed.tempBonus || {});
-            setIncludeOma(parsed.includeOma || false);
           } catch (e) {
             console.error("Fehler beim Laden", e);
           }
@@ -97,10 +95,10 @@
 
       useEffect(() => {
         if (isLoaded) {
-          const stateToSave = { phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma };
+          const stateToSave = { phase, players, currentRound, history, tempBids, tempReceived, tempBonus };
           localStorage.setItem('skullKingState', JSON.stringify(stateToSave));
         }
-      }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, includeOma, isLoaded]);
+      }, [phase, players, currentRound, history, tempBids, tempReceived, tempBonus, isLoaded]);
 
       const handleAddPlayer = () => {
         if (playerNameInput.trim()) {
@@ -109,22 +107,51 @@
         }
       };
 
+      const handleAddOma = () => {
+        if (!players.some(p => p.isOma)) {
+          setPlayers([...players, { id: 'oma-' + Date.now(), name: '👵 Oma', isOma: true }]);
+        } else {
+          alert("Oma ist bereits in der Runde!");
+        }
+      };
+
       const handleRemovePlayer = (id) => setPlayers(players.filter(p => p.id !== id));
 
+      const handleMovePlayer = (index, direction) => {
+        const newPlayers = [...players];
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= newPlayers.length) return;
+        const temp = newPlayers[index];
+        newPlayers[index] = newPlayers[targetIndex];
+        newPlayers[targetIndex] = temp;
+        setPlayers(newPlayers);
+      };
+
       const handleConfirmPlayers = () => {
-        let finalPlayers = [...players];
-        if (includeOma) finalPlayers.push({ id: 'oma-' + Date.now(), name: '👵 Oma', isOma: true });
-        if (finalPlayers.length >= 2) {
-          setPlayers(finalPlayers);
-          initBids(finalPlayers, 1);
+        if (players.length >= 2) {
+          initBids(players, 1);
           setCurrentRound(1);
           setHistory({});
           setPhase('bids');
-        } else alert("Bitte mindestens 2 Spieler (oder 1 + Oma) hinzufügen.");
+          showDealerToast(1, players);
+        } else alert("Bitte mindestens 2 Spieler hinzufügen.");
       };
 
       const getStartingPlayerIndex = (round, count = players.length) => count > 0 ? (round - 1) % count : 0;
       const getDealerPlayerIndex = (round, count = players.length) => count > 0 ? (round - 2 + count) % count : 0;
+
+      const showDealerToast = (roundNum, currentPlayers = players) => {
+        if (currentPlayers.length === 0) return;
+        const dealerIdx = getDealerPlayerIndex(roundNum, currentPlayers.length);
+        const dealer = currentPlayers[dealerIdx];
+        if (!dealer) return;
+        setToastMsg({
+          title: `Runde ${roundNum} 🃏`,
+          sub: `${dealer.name} muss mischen und geben!`
+        });
+        if (toastTimer.current) clearTimeout(toastTimer.current);
+        toastTimer.current = setTimeout(() => setToastMsg(null), 5000);
+      };
 
       const initBids = (currentPlayers = players, round = currentRound) => {
         const initialBids = {};
@@ -158,6 +185,10 @@
       };
 
       const cycleBonus = (pId) => {
+        const bid = tempBids[pId] || 0;
+        const received = tempReceived[pId] || 0;
+        if (bid !== received) return; // Extrapunkte nur bei korrekter Ansage
+        
         const options = [0, 30, 50];
         for (let i = 3; i <= players.length; i++) options.push((i - 1) * 30);
         const currentVal = tempBonus[pId] || 0;
@@ -167,11 +198,11 @@
       };
 
       const calculateScore = (bid, received, bonus, round) => {
-        if (bid === 0) return received === 0 ? (round * 10) + bonus : -(round * 10);
-        return bid === received ? (bid * 20) + bonus : -(Math.abs(bid - received) * 10);
+        const actualBonus = (bid === received) ? (bonus || 0) : 0;
+        if (bid === 0) return received === 0 ? (round * 10) + actualBonus : -(round * 10);
+        return bid === received ? (bid * 20) + actualBonus : -(Math.abs(bid - received) * 10);
       };
       
-      // Abgeleitete Werte (immer aktuell)
       const totalBids = players.reduce((sum, p) => sum + (tempBids[p.id] || 0), 0);
       const totalReceivedStiche = players.reduce((sum, p) => sum + (tempReceived[p.id] || 0), 0);
       const isValidStichCount = totalReceivedStiche === currentRound;
@@ -203,6 +234,7 @@
           setCurrentRound(next);
           initBids(players, next);
           setPhase('bids');
+          showDealerToast(next, players);
         } else setPhase('finished');
       };
 
@@ -264,7 +296,6 @@
               })}
             </svg>
             
-            {/* NEU: Legende für das Chart */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 16px', justifyContent: 'center', marginTop: '16px', fontSize: '12px', padding: '0 8px' }}>
               {players.map((p, idx) => {
                 const color = PLAYER_COLORS[idx % PLAYER_COLORS.length];
@@ -292,14 +323,14 @@
       return (
         <div style={{ height: '100dvh', width: '100vw', display: 'flex', flexDirection: 'column', color: '#fff', position: 'relative' }}>
           
-          {/* NEU: Strategie Toast Einblendung */}
+          {/* Toast Einblendung (Strategie / Mischen & Geben) */}
           {toastMsg && (
             <div style={{
               position: 'fixed', top: '50%', left: '50%',
               background: 'rgba(15, 23, 42, 0.95)', padding: '24px', borderRadius: '16px',
               boxShadow: '0 10px 30px rgba(0,0,0,0.8)', border: '1px solid #334155',
               textAlign: 'center', zIndex: 9999, pointerEvents: 'none',
-              animation: 'toastFade 3.8s ease-in-out forwards', width: '80%', maxWidth: '320px'
+              animation: 'toastFade 5s ease-in-out forwards', width: '80%', maxWidth: '320px'
             }}>
               <div style={{ fontSize: '26px', fontWeight: 'bold', color: '#fff', marginBottom: '10px' }}>{toastMsg.title}</div>
               <div style={{ fontSize: '16px', color: '#cbd5e1' }}>{toastMsg.sub}</div>
@@ -307,48 +338,66 @@
           )}
 
           {phase === 'setup' && (
-            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%' }}>
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', flex: 1, justifyContent: 'center', maxWidth: '400px', margin: '0 auto', width: '100%', overflowY: 'auto' }}>
               <h2 style={{ textAlign: 'center', margin: 0 }}>☠️ Skull King</h2>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input type="text" placeholder="Name..." value={playerNameInput} onChange={e => setPlayerNameInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAddPlayer()}
                   style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: '#1e293b', color: '#fff', border: 'none', outline: 'none' }} />
-                <button onClick={handleAddPlayer} style={{ padding: '14px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '18px', fontWeight: 'bold' }}>+</button>
+                <button onClick={handleAddPlayer} style={{ padding: '14px 20px', backgroundColor: '#10b981', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '18px', fontWeight: 'bold', cursor: 'pointer' }}>+</button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+
+              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                <button onClick={handleAddOma} style={{ padding: '10px 16px', backgroundColor: '#334155', color: '#38bdf8', border: '1px solid #475569', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  + 👵 Oma hinzufügen
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '45vh', overflowY: 'auto' }}>
                 {players.map((p, i) => (
-                  <div key={p.id} style={{ padding: '12px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                  <div key={p.id} style={{ padding: '10px 12px', backgroundColor: '#1e293b', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>{i + 1}. <strong>{p.name}</strong></span>
-                    <button onClick={() => handleRemovePlayer(p.id)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '20px' }}>×</button>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button onClick={() => handleMovePlayer(i, -1)} disabled={i === 0} style={{ background: '#334155', border: 'none', color: i === 0 ? '#475569' : '#fff', borderRadius: '4px', width: '28px', height: '28px', cursor: i === 0 ? 'not-allowed' : 'pointer' }}>▲</button>
+                      <button onClick={() => handleMovePlayer(i, 1)} disabled={i === players.length - 1} style={{ background: '#334155', border: 'none', color: i === players.length - 1 ? '#475569' : '#fff', borderRadius: '4px', width: '28px', height: '28px', cursor: i === players.length - 1 ? 'not-allowed' : 'pointer' }}>▼</button>
+                      <button onClick={() => handleRemovePlayer(p.id)} style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '20px', cursor: 'pointer', marginLeft: '4px' }}>×</button>
+                    </div>
                   </div>
                 ))}
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                <input type="checkbox" checked={includeOma} onChange={e => setIncludeOma(e.target.checked)} style={{ width: '20px', height: '20px' }}/> 👵 Oma (KI) mitspielen lassen
-              </label>
-              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length + (includeOma ? 1 : 0)} Spieler)</button>
+
+              <button onClick={handleConfirmPlayers} style={btnPrimary(false)}>Starten ({players.length} Spieler)</button>
             </div>
           )}
 
           {phase !== 'setup' && (
             <>
-              <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0 }}>
+              <div style={{ padding: '12px 16px', backgroundColor: '#1e293b', display: 'flex', justifyContent: 'space-between', flexShrink: 0, alignItems: 'center' }}>
                 <span style={{ fontWeight: 'bold' }}>{phase === 'finished' ? '🏆 Beendet' : `Runde ${currentRound}/10`}</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>📈</button>}
-                  <button onClick={() => { if(confirm('Reset?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 8px' }}>🗑️</button>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  {phase !== 'finished' && <button onClick={() => setShowChartInGame(!showChartInGame)} style={{ backgroundColor: showChartInGame ? '#38bdf8' : '#334155', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 10px', fontSize: '16px', cursor: 'pointer' }} title="Diagramm">📈</button>}
+                  <button onClick={() => { if(confirm('Spiel wirklich zurücksetzen?')) { setPhase('setup'); setPlayers([]); setHistory({}); setCurrentRound(1); localStorage.removeItem('skullKingState'); } }} style={{ backgroundColor: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', padding: '6px 10px', fontSize: '16px', cursor: 'pointer' }} title="Reset">🗑️</button>
                 </div>
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', tableLayout: 'fixed' }}>
-                  <thead>
+                  <thead style={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: '#1e293b' }}>
                     <tr>
-                      <th style={{ padding: '8px 2px', background: '#1e293b', width: '32px' }}>Rd</th>
+                      <th style={{ padding: '8px 2px', background: '#1e293b', width: '32px', borderBottom: '1px solid #475569' }}>Rd</th>
                       {players.map((p, i) => (
                         <th key={p.id} style={{ background: leaderIds.includes(p.id) ? '#312e81' : '#1e293b', padding: '8px 2px', borderBottom: '1px solid #475569' }}>
-                          <div style={{ fontSize: '14px', color: leaderIds.includes(p.id) ? '#fbbf24' : '#38bdf8', overflow: 'hidden' }}>{leaderIds.includes(p.id) ? '👑 ' : ''}{p.name}</div>
-                          <div style={{ fontSize: '10px', color: '#4ade80' }}>{i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}</div>
+                          <div style={{ fontSize: '13px', color: leaderIds.includes(p.id) ? '#fbbf24' : '#38bdf8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {leaderIds.includes(p.id) ? '👑 ' : ''}{p.name}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#4ade80', height: '14px' }}>
+                            {i === getStartingPlayerIndex(currentRound) && phase !== 'finished' ? '🎯 Ausspiel' : ''}
+                          </div>
+                          <div style={{ fontSize: '9px', color: '#94a3b8', display: 'flex', justifyContent: 'space-around', marginTop: '2px', borderTop: '1px solid #334155', paddingTop: '2px' }}>
+                            <span title="Punkte Gesamt">Pkt</span>
+                            <span title="Ansage">Ans</span>
+                            <span title="Erhaltene Stiche">Erh</span>
+                          </div>
                         </th>
                       ))}
                     </tr>
@@ -362,10 +411,10 @@
                           return (
                             <td key={p.id} style={{ borderBottom: '1px solid #334155', padding: '8px 0' }}>
                               {d ? (
-                                <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-                                  <strong>{d.total}</strong>
-                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{d.bid}</span>
-                                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>{d.received}</span>
+                                <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}>
+                                  <strong style={{ fontSize: '13px' }}>{d.total}</strong>
+                                  <span style={{ fontSize: '11px', color: '#38bdf8' }}>{d.bid}</span>
+                                  <span style={{ fontSize: '11px', color: '#4ade80' }}>{d.received}</span>
                                 </div>
                               ) : <span style={{ color: '#334155' }}>-</span>}
                             </td>
@@ -381,13 +430,21 @@
               {phase !== 'finished' && (
                 <div style={{ backgroundColor: '#1e293b', padding: '12px 16px', flexShrink: 0, boxShadow: '0 -4px 10px rgba(0,0,0,0.5)' }}>
                   
-                  {/* Info-Button neben dem Header eingebaut für Strategie-Replay */}
                   <div style={{ color: '#38bdf8', fontWeight: 'bold', marginBottom: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px' }}>
-                    {phase === 'bids' ? <span>🔮 Ansagen</span> : <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>}
-                    {phase === 'received' && (
-                       <button onClick={showStrategyOverlay} style={{ background: 'none', border: 'none', fontSize: '20px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                         ℹ️
-                       </button>
+                    {phase === 'bids' ? (
+                      <>
+                        <span>🔮 Ansagen</span>
+                        <button onClick={() => showDealerToast(currentRound, players)} style={{ background: 'none', border: 'none', fontSize: '18px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Wer muss geben?">
+                          ℹ️
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span>🃏 Stiche ({totalReceivedStiche}/{currentRound})</span>
+                        <button onClick={showStrategyOverlay} style={{ background: 'none', border: 'none', fontSize: '18px', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Strategie anzeigen">
+                          ℹ️
+                        </button>
+                      </>
                     )}
                   </div>
                   
@@ -395,12 +452,18 @@
                     const val = phase === 'bids' ? tempBids[p.id] : tempReceived[p.id];
                     const setter = phase === 'bids' ? setTempBids : setTempReceived;
                     const isStarter = i === getStartingPlayerIndex(currentRound);
+                    const isDealer = i === getDealerPlayerIndex(currentRound);
+                    const isBidMet = (tempBids[p.id] || 0) === (tempReceived[p.id] || 0);
+
                     return (
                       <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '8px', borderRadius: '12px', marginBottom: '8px', border: isStarter ? '1px solid #10b981' : '1px solid #334155' }}>
                         
-                        {/* NEU: Ansage wird im Receive-Screen eingeblendet */}
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 'bold' }}>{p.name} {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Start</span>}</span>
+                          <span style={{ fontWeight: 'bold' }}>
+                            {p.name} 
+                            {isStarter && <span style={{fontSize:'10px', color:'#4ade80', marginLeft: '4px'}}>🎯 Ausspiel</span>}
+                            {isDealer && <span style={{fontSize:'10px', color:'#fbbf24', marginLeft: '4px'}}>🃏 Geber</span>}
+                          </span>
                           {phase === 'received' && (
                             <span style={{ fontSize: '13px', color: '#94a3b8', marginTop: '4px' }}>
                               Ansage: <strong style={{ color: tempBids[p.id] === 0 ? '#f43f5e' : '#38bdf8', fontSize: '14px' }}>{tempBids[p.id]}</strong>
@@ -412,12 +475,23 @@
                           <div style={{ color: '#4ade80', fontWeight: 'bold' }}>Auto: {val}</div>
                         ) : (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>-</button>
+                            <button onClick={() => updateTemp(setter, p.id, -1)} style={{ width:'40px', height:'40px', background:'#991b1b', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px', cursor:'pointer' }}>-</button>
                             <span style={{ fontSize: '20px', fontWeight: 'bold', width: '20px', textAlign: 'center' }}>{val}</span>
-                            <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px' }}>+</button>
+                            <button onClick={() => updateTemp(setter, p.id, 1)} style={{ width:'40px', height:'40px', background:'#166534', color:'#fff', border:'none', borderRadius:'8px', fontSize:'20px', cursor:'pointer' }}>+</button>
                             {phase === 'received' && (
-                              <button onClick={() => cycleBonus(p.id)} style={{ width:'40px', height:'40px', background: tempBonus[p.id] ? '#854d0e' : '#334155', color: tempBonus[p.id] ? '#fef08a' : '#fff', border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold' }}>
-                                +{tempBonus[p.id] || 0}
+                              <button 
+                                onClick={() => cycleBonus(p.id)} 
+                                disabled={!isBidMet}
+                                title={!isBidMet ? "Extrapunkte nur bei korrekter Ansage möglich" : "Bonus wählen"}
+                                style={{ 
+                                  width:'40px', height:'40px', 
+                                  background: !isBidMet ? '#1e293b' : (tempBonus[p.id] ? '#854d0e' : '#334155'), 
+                                  color: !isBidMet ? '#475569' : (tempBonus[p.id] ? '#fef08a' : '#fff'), 
+                                  border:'none', borderRadius:'8px', fontSize:'12px', fontWeight:'bold', 
+                                  cursor: !isBidMet ? 'not-allowed' : 'pointer' 
+                                }}
+                              >
+                                +{!isBidMet ? 0 : (tempBonus[p.id] || 0)}
                               </button>
                             )}
                           </div>
@@ -433,7 +507,7 @@
 
               {phase === 'finished' && (
                 <div style={{ padding: '16px', backgroundColor: '#1e293b' }}>
-                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Nochmal (Gleiche Spieler)</button>
+                  <button onClick={() => { setCurrentRound(1); setHistory({}); initBids(players, 1); setPhase('bids'); setShowChartInGame(false); showDealerToast(1, players); }} style={{ ...btnPrimary(false), background: '#10b981' }}>🔄 Nochmal (Gleiche Spieler)</button>
                 </div>
               )}
 
@@ -452,14 +526,14 @@
                       <strong style={{ color: totalBids > currentRound ? '#ef4444' : totalBids < currentRound ? '#eab308' : '#10b981' }}>{totalBids}</strong>
                     </div>
                     <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-                      <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px' }}>✏️ Zurück</button>
+                      <button onClick={() => setShowConfirmModal(false)} style={{ flex: 1, padding: '12px', background: '#334155', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>✏️ Zurück</button>
                       <button onClick={() => { 
                           setShowConfirmModal(false); 
                           initReceived(); 
                           setPhase('received'); 
-                          showStrategyOverlay(); // <-- Hier wird die Einblendung getriggert!
+                          showStrategyOverlay();
                         }} 
-                        style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px' }}>
+                        style={{ flex: 1, padding: '12px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer' }}>
                         ✅ Stimmt so!
                       </button>
                     </div>
